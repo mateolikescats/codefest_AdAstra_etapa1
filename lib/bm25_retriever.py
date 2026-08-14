@@ -2,7 +2,8 @@ import re
 from rank_bm25 import BM25Okapi
 from typing import List, Dict, Any
 
-SPANISH_STOPWORDS = {
+MULTILINGUAL_STOPWORDS = {
+    # Español
     "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las", "por",
     "un", "para", "con", "no", "una", "su", "al", "lo", "como", "más", "pero",
     "sus", "le", "ya", "o", "este", "sí", "porque", "esta", "entre", "cuando",
@@ -13,7 +14,18 @@ SPANISH_STOPWORDS = {
     "mucho", "quienes", "nada", "muchos", "cual", "poco", "ella", "estar", "estas",
     "algunas", "algo", "nosotros", "mi", "mis", "tú", "te", "ti", "tu", "tus",
     "ellas", "nosotras", "vosotros", "vosotras", "os", "mío", "mía", "míos",
-    "mías", "tuyo", "tuya", "tuyos", "tuyas", "suyo", "suya", "suyos", "suyas"
+    "mías", "tuyo", "tuya", "tuyos", "tuyas", "suyo", "suya", "suyos", "suyas",
+    # Inglés
+    "the", "of", "and", "to", "in", "for", "with", "that", "this", "on", "was",
+    "as", "by", "an", "it", "are", "is", "at", "from", "be", "has", "have", "but",
+    "he", "she", "they", "we", "you", "his", "her", "their", "its", "which", "who",
+    "about", "into", "than", "over", "other", "some", "only", "also", "then",
+    # Portugués
+    "do", "da", "em", "um", "uma", "os", "as", "dos", "das", "no", "na", "ao", "aos",
+    "com", "para", "por", "mais", "sem", "sob", "sobre", "como", "se", "sua", "suas",
+    "seu", "seus", "ele", "ela", "eles", "elas", "este", "esta", "estes", "estas",
+    "isto", "isso", "aquilo", "mas", "pelo", "pela", "pelos", "pelas", "num", "numa",
+    "neste", "nesta", "entre", "quando"
 }
 
 class BM25Retriever:
@@ -25,7 +37,7 @@ class BM25Retriever:
     def _tokenize(self, text: str) -> List[str]:
         # Lowercase and extract alphanumeric words
         words = re.findall(r'\w+', text.lower())
-        return [w for w in words if len(w) > 2 and w not in SPANISH_STOPWORDS]
+        return [w for w in words if len(w) > 2 and w not in MULTILINGUAL_STOPWORDS]
 
     def search(self, query: str, top_k: int = 50) -> List[Dict[str, Any]]:
         query_tokens = self._tokenize(query)

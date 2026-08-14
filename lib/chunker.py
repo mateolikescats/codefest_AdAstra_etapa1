@@ -15,8 +15,8 @@ class SentenceChunker:
         if not text or not text.strip():
             return []
         
-        # Split on sentence boundaries (. ! ? or double newlines)
-        sentence_end = re.compile(r'(?<=[.!?])\s+|\n\n+')
+        # Split on sentence boundaries (. ! ? followed by capital letter or quote, or double newlines)
+        sentence_end = re.compile(r'(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑÃÂÊÔÇ"\'\n])|\n\n+')
         raw_sentences = sentence_end.split(text)
         
         sentences = []

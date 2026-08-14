@@ -106,12 +106,24 @@ class CorpusExtractor:
         }
 
     def _extract_pdf(self, path: str) -> str:
+        import pypdf
         pages_text = []
-        with fitz.open(path) as doc:
-            for page in doc:
-                p_text = page.get_text("text")
-                if p_text and p_text.strip():
-                    pages_text.append(p_text.strip())
+        try:
+            reader = pypdf.PdfReader(path)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    # Limpiar caracteres surrogate para evitar fallos internos en el tokenizador de HuggingFace
+                    text_clean = text.encode('utf-8', 'surrogatepass').decode('utf-8', 'ignore')
+                    pages_text.append(text_clean)
+        except Exception as e:
+            # Fallback a PyMuPDF en caso de error inesperado
+            pages_text = []
+            with fitz.open(path) as doc:
+                for page in doc:
+                    p_text = page.get_text("text")
+                    if p_text and p_text.strip():
+                        pages_text.append(p_text.strip())
         return "\n\n".join(pages_text)
 
     def _extract_html(self, path: str) -> str:

@@ -13,7 +13,7 @@ def run_indexing(
     corpus_dir: str,
     excel_index_path: str,
     output_base_dir: str,
-    model_name: str = "intfloat/multilingual-e5-base"
+    model_name: str = "intfloat/multilingual-e5-small"
 ):
     print(f"=== STARTING OPTIMIZED CODEFEST INDEXING PIPELINE ===", flush=True)
     print(f"Corpus Directory: {corpus_dir}", flush=True)
@@ -52,11 +52,19 @@ def run_indexing(
         doc_count = 0
         error_count = 0
         file_list = []
+        seen_filenames = set()
         for root, dirs, files in os.walk(corpus_dir):
             for file in files:
                 # Exclude temporary files, Excel indexes, extracted text logs, AND the questions PDF
                 if file.startswith("~$") or file.endswith(".xlsx") or file.endswith(".pdf_extracted_text.txt") or "Extracto_Preguntas" in file:
                     continue
+                # Solo procesar si el archivo está en el inventario oficial y no lo hemos visto antes
+                if file not in extractor.doc_index:
+                    continue
+                if file in seen_filenames:
+                    continue
+                seen_filenames.add(file)
+                
                 full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, corpus_dir)
                 file_list.append((full_path, rel_path))
@@ -99,9 +107,16 @@ def run_indexing(
     print(f"Base Vectorial Saved To: {encoder_dir}", flush=True)
 
 if __name__ == "__main__":
-    corpus_dir = r"c:\Users\mateo\OneDrive\Documents\Universidad\AdAstra\CORPUS CODEFEST AD ASTRA 2026"
-    excel_index_path = r"c:\Users\mateo\OneDrive\Documents\Universidad\AdAstra\CORPUS CODEFEST AD ASTRA 2026\Indice_Datos_Codefest.xlsx"
-    output_base_dir = r"c:\Users\mateo\OneDrive\Documents\Universidad\AdAstra\entrega\base_vectorial"
-    
+    # Autodetección de rutas locales para Mateo y Cristian
+    cristian_corpus = r"d:\Usuarios\Cristian\Desktop\ad astra"
+    if os.path.exists(cristian_corpus):
+        corpus_dir = cristian_corpus
+        excel_index_path = os.path.join(cristian_corpus, "Indice_Datos_Codefest.xlsx")
+        output_base_dir = os.path.join(os.path.dirname(__file__), "base_vectorial")
+    else:
+        corpus_dir = r"c:\Users\mateo\OneDrive\Documents\Universidad\AdAstra\CORPUS CODEFEST AD ASTRA 2026"
+        excel_index_path = r"c:\Users\mateo\OneDrive\Documents\Universidad\AdAstra\CORPUS CODEFEST AD ASTRA 2026\Indice_Datos_Codefest.xlsx"
+        output_base_dir = r"c:\Users\mateo\OneDrive\Documents\Universidad\AdAstra\entrega\base_vectorial"
+        
     run_indexing(corpus_dir, excel_index_path, output_base_dir)
 
