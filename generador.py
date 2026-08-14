@@ -10,7 +10,6 @@ sys.path.append(os.path.dirname(__file__))
 
 from lib.indexer import VectorIndexer
 from lib.bm25_retriever import BM25Retriever, reciprocal_rank_fusion
-from lib.reranker import CrossEncoderReranker
 
 def load_queries(consultas_path: str) -> List[Dict[str, str]]:
     """
@@ -27,13 +26,14 @@ def load_queries(consultas_path: str) -> List[Dict[str, str]]:
                     q_id = item.get("query_id") or item.get("id")
                     q_text = item.get("query") or item.get("texto") or item.get("text")
                     queries.append({"query_id": q_id, "query": q_text})
-        return queries
+        if len(queries) >= 50:
+            return queries[:50]
 
     # Fallback: check Extracto_Preguntas_50_v2.pdf in parent or corpus directory
     pdf_paths = [
+        consultas_path,
         os.path.join(os.path.dirname(__file__), "..", "CORPUS CODEFEST AD ASTRA 2026", "Extracto_Preguntas_50_v2.pdf"),
-        os.path.join(os.path.dirname(__file__), "..", "Extracto_Preguntas_50_v2.pdf"),
-        consultas_path
+        os.path.join(os.path.dirname(__file__), "..", "Extracto_Preguntas_50_v2.pdf")
     ]
     
     pdf_target = None
@@ -54,7 +54,7 @@ def load_queries(consultas_path: str) -> List[Dict[str, str]]:
     if not queries:
         raise FileNotFoundError(f"Could not load queries from {consultas_path}")
         
-    return queries
+    return queries[:50]
 
 def enforce_word_limit(text: str, max_words: int = 250) -> str:
     """
@@ -68,7 +68,6 @@ def enforce_word_limit(text: str, max_words: int = 250) -> str:
     trimmed_words = words[:max_words]
     trimmed_text = " ".join(trimmed_words)
     
-    import re
     # Match last sentence end (. ! ?)
     last_punct = max(trimmed_text.rfind('.'), trimmed_text.rfind('!'), trimmed_text.rfind('?'))
     if last_punct > 50:
@@ -97,11 +96,7 @@ def run_generator(consultas_path: str, base_vectorial_path: str, salida_path: st
     print("Initializing BM25 Lexical Retriever...")
     bm25 = BM25Retriever(indexer.metadata_store)
 
-    # 4. Load Cross-Encoder Reranker
-    print("Loading Cross-Encoder Reranker...")
-    reranker = CrossEncoderReranker()
-
-    # 5. Load Queries
+    # 4. Load Queries
     queries = load_queries(consultas_path)
     print(f"Loaded {len(queries)} queries for evaluation.")
 
@@ -117,32 +112,21 @@ def run_generator(consultas_path: str, base_vectorial_path: str, salida_path: st
         # Lexical BM25 Search (Top 50)
         lexical_results = bm25.search(q_text, top_k=50)
 
-        # Hybrid Reciprocal Rank Fusion (RRF)
+        # Pure Hybrid Reciprocal Rank Fusion (RRF k0=60)
         fused_candidates = reciprocal_rank_fusion([dense_results, lexical_results], k0=60.0)
 
-        # Cross-Encoder Reranking on Top 20 Candidates
-        top_candidates = fused_candidates[:20]
-        reranked_fragments = reranker.rerank(q_text, top_candidates, top_k=10)
-
-        # Fallback if fewer than 10 fragments
-        if len(reranked_fragments) < 10:
-            existing_ids = {f["chunk_id"] for f in reranked_fragments}
-            for candidate in fused_candidates:
-                if candidate["chunk_id"] not in existing_ids:
-                    reranked_fragments.append(candidate)
-                    existing_ids.add(candidate["chunk_id"])
-                if len(reranked_fragments) == 10:
-                    break
+        # Top 10 Chunks
+        top_10_chunks = fused_candidates[:10]
 
         # Format Top 10 Fragments
         formatted_fragments = []
         doc_scores = {}
 
-        for r_idx, frag in enumerate(reranked_fragments[:10], start=1):
+        for r_idx, frag in enumerate(top_10_chunks, start=1):
             doc_id = frag["doc_id"]
             chunk_id = frag["chunk_id"]
             text_cleaned = enforce_word_limit(frag["texto"], max_words=250)
-            score = frag.get("cross_score", frag.get("rrf_score", 0.0))
+            score = frag.get("rrf_score", 0.0)
 
             formatted_fragments.append({
                 "rank": r_idx,
@@ -158,7 +142,7 @@ def run_generator(consultas_path: str, base_vectorial_path: str, salida_path: st
         # Format Top 3 Documents
         sorted_docs = sorted(doc_scores.keys(), key=lambda d: doc_scores[d], reverse=True)
         
-        # If fewer than 3 docs in top fragments, pull from wider fused candidates
+        # If fewer than 3 docs in top 10 fragments, pull from wider fused candidates
         if len(sorted_docs) < 3:
             for cand in fused_candidates:
                 d_id = cand["doc_id"]
@@ -193,7 +177,7 @@ if __name__ == "__main__":
     
     default_base_vec = os.path.join(os.path.dirname(__file__), "base_vectorial")
     default_salida = os.path.join(os.path.dirname(__file__), "resultados.jsonl")
-    default_consultas = os.path.join(os.path.dirname(__file__), "..", "CORPUS CODEFEST AD ASTRA 2026", "Extracto_Preguntas_50_v2.pdf")
+    default_consultas = os.path.join(os.path.dirname(__file__), "consultas.jsonl")
 
     parser.add_argument("--consultas", type=str, default=default_consultas, help="Ruta al archivo de consultas (.jsonl o .pdf)")
     parser.add_argument("--base-vectorial", type=str, default=default_base_vec, help="Ruta al directorio raíz de la base vectorial")
@@ -206,3 +190,4 @@ if __name__ == "__main__":
         base_vectorial_path=args.base_vectorial,
         salida_path=args.salida
     )
+

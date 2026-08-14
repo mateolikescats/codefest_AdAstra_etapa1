@@ -13,25 +13,39 @@ def run_indexing(
     corpus_dir: str,
     excel_index_path: str,
     output_base_dir: str,
-    model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    model_name: str = "intfloat/multilingual-e5-base"
 ):
     print(f"=== STARTING OPTIMIZED CODEFEST INDEXING PIPELINE ===", flush=True)
     print(f"Corpus Directory: {corpus_dir}", flush=True)
     print(f"Excel Index Path: {excel_index_path}", flush=True)
-    print(f"Embedding Model: {model_name}", flush=True)
+    print(f"Embedding Model:  {model_name}", flush=True)
     
     start_time = time.time()
     chunks_cache_file = os.path.join(output_base_dir, "chunks_cache.jsonl")
     all_chunks = []
 
+    # If cache exists, check if it contains polluted question chunks
+    use_cache = False
     if os.path.exists(chunks_cache_file):
-        print(f"Loading pre-extracted chunks from cache: {chunks_cache_file}...", flush=True)
+        print(f"Checking pre-extracted chunks from cache: {chunks_cache_file}...", flush=True)
+        cached = []
+        has_question_pdf = False
         with open(chunks_cache_file, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
-                    all_chunks.append(json.loads(line.strip()))
-        print(f"Loaded {len(all_chunks)} chunks from cache in {time.time() - start_time:.2f}s!", flush=True)
-    else:
+                    item = json.loads(line.strip())
+                    if "Extracto_Preguntas" in item.get("fuente", "") or item.get("doc_id") == "DOC-79283":
+                        has_question_pdf = True
+                    else:
+                        cached.append(item)
+        if not has_question_pdf and len(cached) > 0:
+            all_chunks = cached
+            use_cache = True
+            print(f"Loaded {len(all_chunks)} clean chunks from cache in {time.time() - start_time:.2f}s!", flush=True)
+        else:
+            print("Cache contained evaluation questions PDF or was invalid. Re-running extraction...", flush=True)
+
+    if not use_cache:
         extractor = CorpusExtractor(corpus_dir, excel_index_path)
         chunker = SentenceChunker(max_words=240, target_words=200, overlap_words=40)
         
@@ -40,7 +54,8 @@ def run_indexing(
         file_list = []
         for root, dirs, files in os.walk(corpus_dir):
             for file in files:
-                if file.startswith("~$") or file.endswith(".xlsx") or file.endswith(".pdf_extracted_text.txt"):
+                # Exclude temporary files, Excel indexes, extracted text logs, AND the questions PDF
+                if file.startswith("~$") or file.endswith(".xlsx") or file.endswith(".pdf_extracted_text.txt") or "Extracto_Preguntas" in file:
                     continue
                 full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, corpus_dir)
@@ -63,16 +78,16 @@ def run_indexing(
 
         print(f"Extraction & Chunking Complete in {time.time() - start_time:.2f}s!", flush=True)
         
-        # Save cache for future fast runs
+        # Save clean cache for future runs
         os.makedirs(output_base_dir, exist_ok=True)
         with open(chunks_cache_file, "w", encoding="utf-8") as f:
             for c in all_chunks:
                 f.write(json.dumps(c, ensure_ascii=False) + "\n")
-        print(f"Cached {len(all_chunks)} chunks to {chunks_cache_file}", flush=True)
+        print(f"Cached {len(all_chunks)} clean chunks to {chunks_cache_file}", flush=True)
 
     # 2. Build FAISS Vector Index using optimized vector encoding
     indexer = VectorIndexer(model_name=model_name)
-    indexer.build_index(all_chunks, batch_size=256)
+    indexer.build_index(all_chunks, batch_size=128)
     
     # 3. Save to base_vectorial/encoder_<model_name>/
     safe_model_name = model_name.split("/")[-1].replace("-", "_")
@@ -89,3 +104,4 @@ if __name__ == "__main__":
     output_base_dir = r"c:\Users\mateo\OneDrive\Documents\Universidad\AdAstra\entrega\base_vectorial"
     
     run_indexing(corpus_dir, excel_index_path, output_base_dir)
+

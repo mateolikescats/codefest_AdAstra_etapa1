@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import unicodedata
 import openpyxl
 import pymupdf as fitz  # PyMuPDF
 import pandas as pd
@@ -47,9 +48,11 @@ class CorpusExtractor:
                 "folder": folder
             }
             
-            # Also map by filename alone for fallback matching
-            index_map[filename] = index_map[rel_path]
+            # Also map by filename alone for fallback matching (only if not already mapped)
+            if filename not in index_map:
+                index_map[filename] = index_map[rel_path]
             
+        wb.close()
         return index_map
 
     def extract_document(self, full_filepath: str, rel_filepath: str) -> Dict[str, Any]:
@@ -103,12 +106,12 @@ class CorpusExtractor:
         }
 
     def _extract_pdf(self, path: str) -> str:
-        doc = fitz.open(path)
         pages_text = []
-        for page in doc:
-            p_text = page.get_text("text")
-            if p_text and p_text.strip():
-                pages_text.append(p_text.strip())
+        with fitz.open(path) as doc:
+            for page in doc:
+                p_text = page.get_text("text")
+                if p_text and p_text.strip():
+                    pages_text.append(p_text.strip())
         return "\n\n".join(pages_text)
 
     def _extract_html(self, path: str) -> str:
@@ -127,10 +130,16 @@ class CorpusExtractor:
             data = json.load(f)
         
         parts = []
+        target_keys = {
+            "title", "heading", "name", "subject", "summary", "body_text",
+            "body_paragraphs", "content", "description", "text", "titulo",
+            "resumen", "contenido", "descripcion", "texto", "parrafos"
+        }
+        
         def _recurse_json(obj):
             if isinstance(obj, dict):
                 for k, v in obj.items():
-                    if k.lower() in ["title", "heading", "name", "subject", "summary", "body_text", "body_paragraphs", "content", "description", "text"]:
+                    if k.lower() in target_keys:
                         if isinstance(v, str):
                             parts.append(v)
                         elif isinstance(v, list):
@@ -161,7 +170,16 @@ class CorpusExtractor:
         return "\n".join(lines)
 
     def _clean_text(self, text: str) -> str:
-        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+        """Normalizes Unicode text to NFC, removes control chars and sanitizes secrets."""
+        if not text:
+            return ""
+        # Unicode normalization
+        text = unicodedata.normalize("NFC", text)
+        # Remove control/non-printable characters except newline and tab
+        text = "".join(ch for ch in text if ch == "\n" or ch == "\t" or unicodedata.category(ch)[0] != "C")
+        # Sanitize API token patterns (e.g. Mapbox public tokens)
+        text = re.sub(r'pk\.ey[a-zA-Z0-9_\-\.]+', 'pk.ey_REDACTED_TOKEN', text)
+        # Normalize whitespace
         text = re.sub(r'[ \t]+', ' ', text)
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()

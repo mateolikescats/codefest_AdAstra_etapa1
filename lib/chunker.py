@@ -15,15 +15,14 @@ class SentenceChunker:
         if not text or not text.strip():
             return []
         
-        # Split on sentence boundaries while keeping punctuation attached to sentences
-        sentence_end = re.compile(r'(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ0-9"\'\n])|\n\n+')
+        # Split on sentence boundaries (. ! ? or double newlines)
+        sentence_end = re.compile(r'(?<=[.!?])\s+|\n\n+')
         raw_sentences = sentence_end.split(text)
         
         sentences = []
         for s in raw_sentences:
             s_clean = s.strip()
             if s_clean:
-                # Ensure sentence ends with terminal punctuation if it looks like a full sentence
                 sentences.append(s_clean)
                 
         return sentences
@@ -48,7 +47,7 @@ class SentenceChunker:
         for sentence in sentences:
             words_in_sent = len(sentence.split())
             
-            # If a single sentence exceeds max_words, split it by clause or fixed word limit with complete words
+            # If a single sentence exceeds max_words, split it by clause boundaries
             if words_in_sent > self.max_words:
                 if current_sentences:
                     chunk_text = " ".join(current_sentences)
@@ -57,7 +56,7 @@ class SentenceChunker:
                     current_sentences = []
                     current_word_count = 0
                 
-                # Force-split huge sentence at clause/comma boundaries
+                # Split long sentence by clauses (commas, semicolons, colons)
                 clause_chunks = self._split_long_sentence(sentence, self.max_words)
                 for c_text in clause_chunks:
                     chunks.append(self._build_chunk_dict(doc_data, c_text, chunk_pos))
@@ -97,11 +96,36 @@ class SentenceChunker:
         return chunks
 
     def _split_long_sentence(self, sentence: str, max_words: int) -> List[str]:
-        words = sentence.split()
+        """
+        Splits a long sentence by clause boundaries (;, :, ,) while staying under max_words.
+        """
+        # First try splitting by clause punctuation
+        clauses = re.split(r'(?<=[;,:])\s+', sentence)
         sub_chunks = []
-        for i in range(0, len(words), max_words):
-            sub_chunks.append(" ".join(words[i:i + max_words]))
-        return sub_chunks
+        curr_words = []
+        curr_cnt = 0
+
+        for clause in clauses:
+            c_words = clause.split()
+            if curr_cnt + len(c_words) <= max_words:
+                curr_words.extend(c_words)
+                curr_cnt += len(c_words)
+            else:
+                if curr_words:
+                    sub_chunks.append(" ".join(curr_words))
+                if len(c_words) > max_words:
+                    # Fallback to word slicing if a single clause is huge
+                    for i in range(0, len(c_words), max_words):
+                        sub_chunks.append(" ".join(c_words[i:i + max_words]))
+                    curr_words = []
+                    curr_cnt = 0
+                else:
+                    curr_words = list(c_words)
+                    curr_cnt = len(c_words)
+        if curr_words:
+            sub_chunks.append(" ".join(curr_words))
+
+        return sub_chunks if sub_chunks else [sentence]
 
     def _build_chunk_dict(self, doc_data: Dict[str, Any], text: str, pos: int) -> Dict[str, Any]:
         words = text.split()
@@ -119,3 +143,4 @@ class SentenceChunker:
             "num_tokens": num_words,
             "texto": text
         }
+
