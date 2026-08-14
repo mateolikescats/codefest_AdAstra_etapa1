@@ -10,7 +10,7 @@ from typing import List, Dict, Any
 torch.set_num_threads(os.cpu_count() or 8)
 
 class VectorIndexer:
-    def __init__(self, model_name: str = "intfloat/multilingual-e5-small"):
+    def __init__(self, model_name: str = "BAAI/bge-m3"):
 
 
         self.model_name = model_name
@@ -32,8 +32,11 @@ class VectorIndexer:
             return
 
         is_e5 = "e5" in self.model_name.lower()
+        is_bge = "bge" in self.model_name.lower()
         if is_e5:
             texts = [f"passage: {c['texto']}" for c in chunks]
+        elif is_bge:
+            texts = [c["texto"] for c in chunks]  # BGE-M3 no requiere prefijo para passages
         else:
             texts = [c["texto"] for c in chunks]
 
@@ -80,12 +83,14 @@ class VectorIndexer:
 
         if model_name is None:
             dir_name = os.path.basename(os.path.normpath(input_dir)).lower()
-            if "e5_base" in dir_name or dim == 768:
+            if "bge" in dir_name or dim == 1024:
+                model_name = "BAAI/bge-m3"
+            elif "e5_base" in dir_name or dim == 768:
                 model_name = "intfloat/multilingual-e5-base"
             elif "e5_small" in dir_name or dim == 384:
                 model_name = "intfloat/multilingual-e5-small"
             else:
-                model_name = "intfloat/multilingual-e5-small"
+                model_name = "BAAI/bge-m3"
 
         obj = cls(model_name=model_name)
         obj.index = temp_index
@@ -101,7 +106,13 @@ class VectorIndexer:
 
     def search(self, query: str, top_k: int = 50) -> List[Dict[str, Any]]:
         is_e5 = "e5" in self.model_name.lower()
-        query_text = f"query: {query}" if is_e5 else query
+        is_bge = "bge" in self.model_name.lower()
+        if is_e5:
+            query_text = f"query: {query}"
+        elif is_bge:
+            query_text = f"Represent this sentence for searching relevant passages: {query}"
+        else:
+            query_text = query
 
         with torch.inference_mode():
             query_vec = self.model.encode([query_text], normalize_embeddings=True)

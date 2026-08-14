@@ -13,7 +13,7 @@ def run_indexing(
     corpus_dir: str,
     excel_index_path: str,
     output_base_dir: str,
-    model_name: str = "intfloat/multilingual-e5-small"
+    model_name: str = "BAAI/bge-m3"
 ):
     print(f"=== STARTING OPTIMIZED CODEFEST INDEXING PIPELINE ===", flush=True)
     print(f"Corpus Directory: {corpus_dir}", flush=True)
@@ -101,6 +101,20 @@ def run_indexing(
     safe_model_name = model_name.split("/")[-1].replace("-", "_")
     encoder_dir = os.path.join(output_base_dir, f"encoder_{safe_model_name}")
     indexer.save(encoder_dir)
+
+    # 4. Build Knowledge Graph (bonus component)
+    try:
+        from lib.knowledge_graph import KnowledgeGraph
+        print("\n=== BUILDING KNOWLEDGE GRAPH (BONUS) ===", flush=True)
+        kg = KnowledgeGraph()
+        kg.build_from_chunks(all_chunks, batch_size=500)
+        grafo_dir = os.path.join(output_base_dir, "grafo")
+        kg.save(grafo_dir)
+        print(f"Knowledge Graph saved to: {grafo_dir}", flush=True)
+    except ImportError as e:
+        print(f"Skipping Knowledge Graph (missing dependency): {e}", flush=True)
+    except Exception as e:
+        print(f"Warning: Knowledge Graph construction failed: {e}", flush=True)
     
     elapsed = time.time() - start_time
     print(f"\n=== INDEXING PIPELINE SUCCESSFUL IN {elapsed:.2f} SECONDS ===", flush=True)
