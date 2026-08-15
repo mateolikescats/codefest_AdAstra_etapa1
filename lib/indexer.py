@@ -14,7 +14,10 @@ class VectorIndexer:
 
 
         self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
+        try:
+            self.model = SentenceTransformer(model_name, model_kwargs={"use_safetensors": True})
+        except Exception:
+            self.model = SentenceTransformer(model_name)
         self.model.max_seq_length = 512
         try:
             self.dimension = self.model.get_embedding_dimension()
